@@ -16,7 +16,7 @@
                     libcurl4-openssl-dev libexpat1-dev libssl-dev libtiff4-dev libx11-dev unixodbc-dev \
                     python2.6-dev zlib1g-dev libzrtpcpp-dev libasound2-dev libogg-dev libvorbis-dev libperl-dev \
                     libgdbm-dev libdb-dev python-dev uuid-dev bison autoconf g++ libncurses-dev libdb-dev \
-                    libgdbm-dev lua5.1 liblua5.1-sql-mysql-2 
+                    libgdbm-dev lua5.1 liblua5.1-sql-mysql-2 dos2unix
 
                     
 #Get the source code:
@@ -51,20 +51,20 @@
          You need to edit /usr/local/src/freeswitch/libs/esl/perl/Makefile and set PERL_SITEDIR to perl's correct path,
          in my case it was PERL_SITEDIR="/usr/share/perl/5.10.1/", and execute again. 
 
-Get Viking's source code:
+#Get Viking's source code:
 
      cd /home/$USER/
      git://github.com/davidcsi/FreeSWITCH-Billing.git
      cd FreeSWITCH-Billing
 
-Prepare Viking's db backend, add "viking" user and import the db structure:
+#Prepare Viking's db backend, add "viking" user and import the db structure:
 
      echo "create database viking" | mysql -u root -p[root db password]                         
      echo "CREATE USER 'viking'@'localhost' IDENTIFIED BY 'V1k1ng';GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, FILE, INDEX, ALTER, SUPER, CREATE TEMPORARY TABLES, CREATE VIEW, EVENT, TRIGGER, SHOW VIEW, CREATE ROUTINE, ALTER ROUTINE, EXECUTE ON *.* TO 'viking'@'localhost' IDENTIFIED BY 'V1k1ng' WITH MAX_QUERIES_PER_HOUR 0 MAX_CONNECTIONS_PER_HOUR 0 MAX_UPDATES_PER_HOUR 0 MAX_USER_CONNECTIONS 0;" | mysql -u root -p
      gunzip viking_db.sql.gz 
      mysql -u viking -pV1k1ng viking < viking_db.sql 
 
-Unpack the web GUI and copy it over to the server's www:
+#Unpack the web GUI and copy it over to the server's www:
      tar -xvzf viking_web.tar.gz
      mv cdrpost /var/www/
      mv fsxml /var/www/        
@@ -72,21 +72,21 @@ Unpack the web GUI and copy it over to the server's www:
 
 edit /etc/hosts and add:
 
-     127.0.0.1       viking_db
-     127.0.0.1       fs
+     echo "127.0.0.1  viking_db" >> /etc/hosts
+     echo "127.0.0.1       fs" >> /etc/hosts
 
-REMOVE:
+#REMOVE:
 
      rm /usr/local/freeswitch/conf/autoload_configs/sofia.conf.xml
      rm /usr/local/freeswitch/conf/autoload_configs/distributor.conf.xml
      rm /usr/local/freeswitch/conf/autoload_configs/dialplan_directory.conf.xml
 
-Create directories for freeswitch's logs
+#Create directories for freeswitch's logs
 
      mkdir /var/log/freeswitch
      mkdir /var/log/freeswitch/errors 
 
-Edit /usr/local/freeswitch/conf/autoload_configs/xml_cdr.conf.xml and uncomment and set:
+#Edit /usr/local/freeswitch/conf/autoload_configs/xml_cdr.conf.xml and uncomment and set:
 
      <param name="url" value="http://viking_db/cdrpost/post.php"/>
      <param name="retries" value="5"/>
@@ -95,60 +95,65 @@ Edit /usr/local/freeswitch/conf/autoload_configs/xml_cdr.conf.xml and uncomment 
      <param name="log-dir" value="/var/log/freeswitch"/>
      <param name="err-log-dir" value="/var/log/freeswitch/errors"/>
 
-chmod +x freeswitch_reload_config.pl
+#Try to go into [SERVER_IP]/webint using admin/admin
+#
+#************************************************************************************************************
 
-Try to go into [SERVER_IP]/webint using admin/admin
-
-************************************************************************************************************
-
-make a link to fs_cli from /usr/bin, will save you a lot of typing...
+#make a link to fs_cli from /usr/bin, will save you a lot of typing...
 
      ln -s /usr/local/freeswitch/bin/fs_cli /usr/bin/fs_cli
 
-Start freeSWITCH, I like to start it in "screen":
+#Start freeSWITCH, I like to start it in "screen":
 
      screen -S fs
      ulimit -s 240 && /usr/local/freeswitch/bin/freeswitch -nc
 
      To exit press: CTRL+A CTRL+D
 
-Unzip the scripts file:
+#Unzip the scripts file:
 
+     mkdir /opt/fs-viking
      mv viking_script.zip /opt/fs-viking/.
      cd /opt/fs-viking/
      unzip viking_script.zip
 
-and copy FS's scripts to viking's folder:
+#and copy FS's scripts to viking's folder:
 
      mv /opt/fs-viking/*.lua /usr/local/freeswitch/scripts/.
 
-Now, create a link to lua's mysql.so:
+#Now, create a link to lua's mysql.so:
 
      mkdir /usr/bin/luasql
      ln -s /usr/bin/luasql /usr/local/freeswitch/scripts/luasql
-     ln -s /usr/bin/luasql/mysql.so /usr/lib/liblua5.1-sql-mysql.so.2.0.0
+     ln -s /usr/lib/liblua5.1-sql-mysql.so.2.0.0 /usr/bin/luasql/mysql.so
 
-Uncomment in /usr/local/freeswitch/conf/autoload_configs/modules.conf.xml 
+#Uncomment in /usr/local/freeswitch/conf/autoload_configs/modules.conf.xml 
 
      <load module="mod_xml_cdr"/>
      <load module="mod_distributor"/>
      
-Edit and set in lua.conf.xml the following: 
+#Edit and set in /usr/local/freeswitch/conf/autoload_configs/lua.conf.xml the following: 
 
     <param name="module-directory" value="/usr/lib/lua/5.1/?.so"/>
     <param name="module-directory" value="/usr/bin/luasql/?.so"/>
      
          
+Mark the scripts as executable: 
 
-To create initial config, execute: 
+     chmod +x /opt/fs-viking/*
+
+# I found that sometimes the format on the files is in DOS, so fix that with
+
+     dos2unix /opt/fs-viking/*
+     
+
+#To create initial config, execute: 
      
      /opt/fs-viking/freeswitch_reload_config.pl DUMMY XML
 
+
 To start the scripts that reload FS configs and ongoing calls:
 
-     Mark them as executable: 
-     chmod +x /opt/fs-viking/
-     
      And add to crontab
      # m h  dom mon dow   command
      * * * * *       /opt/fs-viking/watchdog_viking_reload.sh
