@@ -1,0 +1,158 @@
+#
+#Note: 
+#     This installation example is based on a "Turnkey LAMP" appliance 
+#     running on a VM. The same step should apply to a freshly installed 
+#     debian/ubuntu.
+#     If installing on a new debian/ubuntu, you will need to install and 
+#     configure Apache2 and MySQL.
+#
+#
+#Atfter finishing you LAMP installation:
+#
+#Prepare pre-requisites:
+     apt-get update &&
+     apt-get install git-core build-essential autoconf automake libtool libncurses5 libncurses5-dev make \
+                    libjpeg-dev pkg-config unixodbc unixodbc-dev zlib1g-dev \
+                    libcurl4-openssl-dev libexpat1-dev libssl-dev libtiff4-dev libx11-dev unixodbc-dev \
+                    python2.6-dev zlib1g-dev libzrtpcpp-dev libasound2-dev libogg-dev libvorbis-dev libperl-dev \
+                    libgdbm-dev libdb-dev python-dev uuid-dev bison autoconf g++ libncurses-dev libdb-dev \
+                    libgdbm-dev lua5.1 liblua5.1-sql-mysql-2 
+
+                    
+#Get the source code:
+
+     cd /usr/local/src &&
+     git clone git://git.freeswitch.org/freeswitch.git &&
+     cd freeswitch &&
+     ./bootstrap.sh
+
+#edit modules.conf and UNcomment:
+
+     sed -i "/mod_distributor/ s/#*//" modules.conf 
+     sed -i "/mod_esl/ s/#*//" modules.conf
+     sed -i "/xml_int\/mod_xml_curl/ s/#*//" modules.conf
+
+#And Compile:
+
+     ./configure && make all install cd-sounds-install cd-moh-install
+
+#The freeSWITCH installation will be finished after this.
+#
+#************************************************************************************************************
+#
+#We need the ESL module for perl, so compile it:
+
+     cd /usr/local/src/freeswitch/libs/esl/
+     make perlmod
+     make perlmod-install (*)
+
+     (*) If the "make perlmod-install" command fails with 
+         "install: cannot create regular file `/usr/local/share/perl/5.10.1': No such file or directory"
+         You need to edit /usr/local/src/freeswitch/libs/esl/perl/Makefile and set PERL_SITEDIR to perl's correct path,
+         in my case it was PERL_SITEDIR="/usr/share/perl/5.10.1/", and execute again. 
+
+Get Viking's source code:
+
+     cd /home/$USER/
+     git://github.com/davidcsi/FreeSWITCH-Billing.git
+     cd FreeSWITCH-Billing
+
+Prepare Viking's db backend, add "viking" user and import the db structure:
+
+     echo "create database viking" | mysql -u root -p[root db password]                         
+     echo "CREATE USER 'viking'@'localhost' IDENTIFIED BY 'V1k1ng';GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, FILE, INDEX, ALTER, SUPER, CREATE TEMPORARY TABLES, CREATE VIEW, EVENT, TRIGGER, SHOW VIEW, CREATE ROUTINE, ALTER ROUTINE, EXECUTE ON *.* TO 'viking'@'localhost' IDENTIFIED BY 'V1k1ng' WITH MAX_QUERIES_PER_HOUR 0 MAX_CONNECTIONS_PER_HOUR 0 MAX_UPDATES_PER_HOUR 0 MAX_USER_CONNECTIONS 0;" | mysql -u root -p
+     gunzip viking_db.sql.gz 
+     mysql -u viking -pV1k1ng viking < viking_db.sql 
+
+Unpack the web GUI and copy it over to the server's www:
+     tar -xvzf viking_web.tar.gz
+     mv cdrpost /var/www/
+     mv fsxml /var/www/        
+     mv webint /var/www/      
+
+edit /etc/hosts and add:
+
+     127.0.0.1       viking_db
+     127.0.0.1       fs
+
+REMOVE:
+
+     rm /usr/local/freeswitch/conf/autoload_configs/sofia.conf.xml
+     rm /usr/local/freeswitch/conf/autoload_configs/distributor.conf.xml
+     rm /usr/local/freeswitch/conf/autoload_configs/dialplan_directory.conf.xml
+
+Create directories for freeswitch's logs
+
+     mkdir /var/log/freeswitch
+     mkdir /var/log/freeswitch/errors 
+
+Edit /usr/local/freeswitch/conf/autoload_configs/xml_cdr.conf.xml and uncomment and set:
+
+     <param name="url" value="http://viking_db/cdrpost/post.php"/>
+     <param name="retries" value="5"/>
+     <param name="delay" value="5"/>
+     <param name="log-b-leg" value="false"/>
+     <param name="log-dir" value="/var/log/freeswitch"/>
+     <param name="err-log-dir" value="/var/log/freeswitch/errors"/>
+
+chmod +x freeswitch_reload_config.pl
+
+Try to go into [SERVER_IP]/webint using admin/admin
+
+************************************************************************************************************
+
+make a link to fs_cli from /usr/bin, will save you a lot of typing...
+
+     ln -s /usr/local/freeswitch/bin/fs_cli /usr/bin/fs_cli
+
+Start freeSWITCH, I like to start it in "screen":
+
+     screen -S fs
+     ulimit -s 240 && /usr/local/freeswitch/bin/freeswitch -nc
+
+     To exit press: CTRL+A CTRL+D
+
+Unzip the scripts file:
+
+     mv viking_script.zip /opt/fs-viking/.
+     cd /opt/fs-viking/
+     unzip viking_script.zip
+
+and copy FS's scripts to viking's folder:
+
+     mv /opt/fs-viking/*.lua /usr/local/freeswitch/scripts/.
+
+Now, create a link to lua's mysql.so:
+
+     mkdir /usr/bin/luasql
+     ln -s /usr/bin/luasql /usr/local/freeswitch/scripts/luasql
+     ln -s /usr/bin/luasql/mysql.so /usr/lib/liblua5.1-sql-mysql.so.2.0.0
+
+Uncomment in /usr/local/freeswitch/conf/autoload_configs/modules.conf.xml 
+
+     <load module="mod_xml_cdr"/>
+     <load module="mod_distributor"/>
+     
+Edit and set in lua.conf.xml the following: 
+
+    <param name="module-directory" value="/usr/lib/lua/5.1/?.so"/>
+    <param name="module-directory" value="/usr/bin/luasql/?.so"/>
+     
+         
+
+To create initial config, execute: 
+     
+     /opt/fs-viking/freeswitch_reload_config.pl DUMMY XML
+
+To start the scripts that reload FS configs and ongoing calls:
+
+     Mark them as executable: 
+     chmod +x /opt/fs-viking/
+     
+     And add to crontab
+     # m h  dom mon dow   command
+     * * * * *       /opt/fs-viking/watchdog_viking_reload.sh
+     * * * * *       /opt/fs-viking/watchdog_viking_get_calls.sh
+
+
+
