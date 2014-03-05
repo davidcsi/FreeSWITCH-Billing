@@ -36,6 +36,11 @@
 
      ./configure && make all install cd-sounds-install cd-moh-install
 
+# copy init scripts
+
+     cp `find . -name *freeswitch.init* | grep "debian"` /etc/init.d/freeswitch && chmod +x /etc/init.d/freeswitch
+     cp `find . -name *freeswitch.default* | grep "debian"` /etc/default/freeswitch
+
 #The freeSWITCH installation will be finished after this.
 #
 #************************************************************************************************************
